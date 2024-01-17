@@ -39,5 +39,6 @@ with open(path_to_train_dataset_1, "r") as csv_file:
         with open(output_filepath, "w", newline="") as output_csv:
             csv_writer = csv.writer(output_csv)
             csv_writer.writerows(tow_d_vector)
+        print(f"Conversion for {output_filename} completed.")
 
 print("Conversion and saving completed.")
