@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 from imutils import face_utils
 import dlib
 import cv2
