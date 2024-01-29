@@ -1,13 +1,14 @@
 #==========================================#
 # Title:  Data Loader
-# Author: Hwanmoo Yong
-# Date:   2021-01-08
+# Author: JeongHyeok Lim
+# Date:   2024-01-24
 #==========================================#
 import os, glob
 import csv
 import numpy as np
-
 import random
+
+# Divide data as train, validation and test data
 
 data_per_episode = 2000
 
@@ -39,7 +40,7 @@ class DataLoader():
         # Normally, we utilize mean and standard deviation.
         if self.normalize_flag:
             arr = arr - arr.mean()
-            arr = arr / abs(arr).max()            
+            arr = arr / abs(arr).max()
 
         return arr
 
@@ -50,7 +51,7 @@ class DataLoader():
         csvs = sorted(glob.glob(os.path.join('./datasets',self.dataset_name,'*.csv')))
         if self.shuffle:
             random.shuffle(csvs)
-        
+
         for _csv in csvs:
             with open(_csv, newline='') as csvfile:
                 csv_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
@@ -82,24 +83,24 @@ class DataLoader():
         self.u = self.normalize("u", np.asarray(self.u))
         self.r = self.normalize("r", np.asarray(self.r))
 
-        np.savez(os.path.join('./datasets', self.dataset_name+'.npz'), 
-                    body_acc=self.body_acc, 
-                    tire_acc=self.tire_acc, 
+        np.savez(os.path.join('./datasets', self.dataset_name+'.npz'),
+                    body_acc=self.body_acc,
+                    tire_acc=self.tire_acc,
                     body_accf = self.body_accf,
                     tire_accf = self.tire_accf,
                     body_vel=self.body_vel,
                     tire_vel=self.tire_vel,
                     def_vel=self.def_vel,
-                    a=self.a, 
-                    G=self.G, 
-                    K=self.K, 
+                    a=self.a,
+                    G=self.G,
+                    K=self.K,
                     u=self.u,
-                    r=self.r 
+                    r=self.r
                 )
     def read(self, window_size):
         # 'Read' in this example code convert the dataset into windowed data.
         # Not necessary if you are not dealing with sequential data or model.
-        dataset = np.load(os.path.join('./datasets', self.dataset_name+'.npz')
+        dataset = np.load(os.path.join('./datasets', self.dataset_name+'.npz'))
 
         self.body_acc = dataset['body_acc']
         self.tire_acc = dataset['tire_acc']
