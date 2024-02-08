@@ -114,3 +114,5 @@ dmypy.json
 cython_debug/
 *.jpg
 *.npz
+*.h5
+*.keras
