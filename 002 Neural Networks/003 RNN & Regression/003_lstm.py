@@ -1,6 +1,6 @@
 #==========================================#
 # Title:  Stock prices prediction with LSTM
-# Author: Bogyeong Suh
+# Author: JeongHyeok Lim
 # Date:   2023-02-03
 #==========================================#
 import math
@@ -34,7 +34,7 @@ epoch = 20 #epoch
 for i in range(days, len(train_data)):
     x_train.append(train_data[i-days:i, 0])
     y_train.append(train_data[i, 0])
-    
+
 x_train, y_train = np.array(x_train), np.array(y_train)
 #Reshaping the train data to make it as input for LSTM layer input_shape(batchsize, timesteps, input_dim)
 x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
@@ -45,7 +45,7 @@ y_test = values[training_data_len:]
 
 for i in range(days, len(test_data)):
     x_test.append(test_data[i-days:i, 0])
-    
+
 x_test = np.array(x_test)
 x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
 
