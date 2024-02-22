@@ -1,66 +1,65 @@
-#==========================================#
-# Title:  Data Loader
-# Author: Hwanmoo Yong
-# Date:   2021-01-17
-#==========================================#
-from keras.models import Sequential, Model, load_model
-from keras.layers import LSTM, Dense, Input, Dropout, Concatenate, BatchNormalization, Activation, Bidirectional, GaussianNoise, Flatten
-from keras.utils import to_categorical
-from keras.callbacks import EarlyStopping, ModelCheckpoint, CSVLogger, ReduceLROnPlateau, Callback, TensorBoard
-from keras.regularizers import l2
-import keras.backend.tensorflow_backend as K
-from keras.utils import multi_gpu_model
+#!/usr/bin/env python3
 import keras
-
+from keras.datasets.cifar10 import load_data
 import numpy as np
-import time
-
 import tensorflow as tf
+from keras.applications.xception import Xception
 
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import itertools
+class ImageClassification():
+    def __init__(self):
+        self.model = keras.models.Sequential()  # Sequential 모델 객체 생성
 
-import sys
+    def create(self, ratio_1, ratio_2):
+        (x_train, y_train), (x_test, y_test) = load_data()
+        # 편리하게 나누기 위해 1차원으로 이어줌
+        x_total = np.concatenate([x_train, x_test])
+        y_total = np.concatenate([y_train, y_test])
+        # split data
+        [x_train, x_valid, x_test] = np.split(x_total, [int(60000 * ratio_1), int(60000 * (ratio_1 + ratio_2))])
+        [y_train, y_valid, y_test] = np.split(y_total, [int(60000 * ratio_1), int(60000 * (ratio_1 + ratio_2))])
 
-class RoadClassificationModel():
-    def __init__(self, time_window=8):
-        self.time_window = time_window
+        # normalize
+        x_train = keras.applications.xception.preprocess_input(x_train)
+        y_train = keras.utils.to_categorical(y_train)
+        x_valid = keras.applications.xception.preprocess_input(x_valid)
+        y_valid = keras.utils.to_categorical(y_valid)
+        x_test = keras.applications.xception.preprocess_input(x_test)
+        y_test = keras.utils.to_categorical(y_test)
 
-        # self.build()
+        return (x_train, y_train), (x_valid, y_valid), (x_test, y_test)
 
-    def build(self, front_trainable=True):
-        _tsi = Input(shape=(25,21,2), name="tire_stft")
+    def build(self):
+        initialize = keras.initializers.he_normal()
+        input_tensor = keras.Input(shape=(32, 32, 3))
+        resized_images = keras.layers.Lambda(lambda image: tf.image.resize(image, (128, 128)))(input_tensor)
+        self.base_model = Xception(include_top=False, weights='imagenet', input_tensor=resized_images,
+                                   input_shape=(128, 128, 3), pooling='max')
+        self.base_model.trainable = False
 
-        # base_model = keras.applications.densenet.DenseNet121(include_top=False, weights=None, input_tensor=_tsi, input_shape=None, pooling=None, classes=1000)
-        base_model = keras.applications.ResNet50(include_top=False, weights=None, input_tensor=_tsi, input_shape=None, pooling=None, classes=1000).output
-        base_model = Flatten()(base_model)
-        def fc(num_classes, _input, names, name, activation, trainable):
-            x = _input
-        
-            x = Dense(128, kernel_initializer='glorot_normal',
-                            kernel_regularizer=l2(0.001), trainable=trainable, name=names+'_d2_'+name)(x)
-            x = BatchNormalization(trainable=trainable, name=names+'_b2_'+name)(x)
-            x = Activation('elu', trainable=trainable, name=names+'_a2_'+name)(x)
-            x = Dropout(0.5)(x)
+        # Add layers to define the architecture
+        self.model.add(self.base_model)
+        self.model.add(keras.layers.Dense(512, activation='relu', kernel_initializer=initialize,
+                                           kernel_constraint=keras.constraints.unit_norm(),
+                                           kernel_regularizer=keras.regularizers.l2(1e-4)))
+        self.model.add(keras.layers.Dropout(0.3))
+        self.model.add(keras.layers.Dense(256, activation='relu', kernel_initializer=initialize,
+                                           kernel_constraint=keras.constraints.unit_norm(),
+                                           kernel_regularizer=keras.regularizers.l2(1e-4)))
+        self.model.add(keras.layers.Dropout(0.3))
+        self.model.add(keras.layers.Dense(10, activation='softmax'))
+        self.model.summary()
 
-            x = Dense(64, kernel_initializer='glorot_normal',
-                            kernel_regularizer=l2(0.001), trainable=trainable, name=names+'_d3_'+name)(x)
-            x = BatchNormalization(trainable=trainable, name=names+'_b3_'+name)(x)
-            x = Activation('elu', trainable=trainable, name=names+'_a3_'+name)(x)
-            x = Dropout(0.5)(x)
-            return Dense(num_classes, activation=activation, name=name+'_out', trainable=trainable)(x)
+        self.model.compile(loss="categorical_crossentropy", optimizer=keras.optimizers.Adam(learning_rate=1e-4),
+                           metrics=['accuracy'])
+        return self.model
 
-        a_prediction = fc(1, base_model, "a_layer", "a", "linear", True)
-        K_prediction = fc(1, base_model, "K_layer", "K", "linear", True)
+def main():
+    ratio_1 = 0.7
+    ratio_2 = 0.2
+    cm = ImageClassification()
+    (x_train, y_train), (x_valid, y_valid), (x_test, y_test) = cm.create(ratio_1, ratio_2)
+    model = cm.build()
+    # 모델 학습, 평가 코드 추가해야 함
 
-        model = Model(inputs=[_tsi], outputs=[a_prediction, K_prediction])
-
-        model.summary()
-
-        model = multi_gpu_model(model, gpus=4)
-        model.compile(  loss="MSE",
-                        optimizer='adam',
-                        metrics=['mse'])
-
-        return model
+if __name__ == "__main__":
+    main()
