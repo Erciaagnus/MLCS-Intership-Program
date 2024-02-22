@@ -1,9 +1,4 @@
-#==========================================#
-# Title:  CAM on Cats vs Dogs classification 
-# Author: Bogyeong Suh
-# Original code on: https://junstar92.tistory.com/152
-# Date:   2023-02-07
-#==========================================#
+#!/usr/bin/env python3
 import tensorflow as tf
 import tensorflow_datasets as tfds
 import numpy as np
@@ -20,14 +15,14 @@ splits, info = tfds.load('cats_vs_dogs', with_info=True, as_supervised=True, spl
 num_examples = info.splits['train'].num_examples
 num_classes = info.features['label'].num_classes
 BATCH_SIZE = 32
- 
+
 def preprocessing(image, label):
     image = tf.cast(image, tf.float32)
     image = image / 255.
     image = tf.image.resize(image, (224, 224))
- 
+
     return image, label
- 
+
 # prepare batches
 train_batches = train_examples.shuffle(num_examples // 4).map(preprocessing).batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
 validation_batches = validation_examples.map(preprocessing).batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
