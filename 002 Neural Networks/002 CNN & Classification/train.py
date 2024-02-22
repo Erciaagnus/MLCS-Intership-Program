@@ -1,75 +1,91 @@
-#==========================================#
-# Title:  Data Loader
-# Author: Hwanmoo Yong
-# Date:   2021-01-17
-#==========================================#
-from data_loader import DataLoader
-from cnn_network import RoadClassificationModel
-from keras.callbacks import EarlyStopping, ModelCheckpoint, CSVLogger, ReduceLROnPlateau, Callback, TensorBoard
-
-import sys
+#!/usr/bin/env python3
+import keras
+import datetime
 import numpy as np
+from cnn_network import ImageClassification
 
-import os
-if not os.path.exists('./models'):
-    os.makedirs('./models')
+# cnn_network 모듈에서 ImageClassification 클래스 가져오기
+# 데이터셋 분할 및 비율 설정
 
-data_type = "CNN"
-batch_size = 4048
+ratio_1 = 0.7
+ratio_2 = 0.2
 
-def split(flag, d):
-    train_idx = int(d.shape[0]*0.7)
-    eval_idx = int(d.shape[0]*0.9)
+def main():
+    # ImageClassification 클래스 인스턴스 생성
+    cm = ImageClassification()
 
-    if flag == "train":
-        return d[0:train_idx]
-    elif flag == "val":
-        return d[train_idx:eval_idx]
-    elif flag == "test":
-        return d[eval_idx:]
+    # 모델 생성
+    model = cm.build()
 
-def main(window_size):
-    dl = DataLoader()
-    
-    # Create NPZ from csv raw dataset
-    # dl.create()
+    # 데이터 로드 및 전처리
+    (x_train, y_train), (x_valid, y_valid), (x_test, y_test) = cm.create(ratio_1, ratio_2)
 
-    # Load and Create windowed NPZ
-    # d = dl.read(window_size=int(window_size))
+    # 사전 훈련된 base_model의 가중치를 동결
+    cm.base_model.trainable = False
 
-    # Load windowed dataset
-    d = dl.load(window_size=int(window_size))
+    # Optimizer 및 Learning Rate Scheduler 설정
+    schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-4, decay_steps=10000, decay_rate=0.9)
+    reduce = keras.callbacks.ReduceLROnPlateau(monitor='val_accuracy', factor=0.6, patience=2, verbose=1, mode='max', min_lr=1e-7)
+    early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=21, verbose=1, restore_best_weights=True, mode='max')
 
-    rm = RoadClassificationModel(time_window=int(window_size))
-    model = rm.build()
+    # 모델 체크포인트 설정
+    checkpoint_path = 'checkpoint/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + '/cifar10.h5'
+    checkpoint = keras.callbacks.ModelCheckpoint(checkpoint_path,
+                                                  monitor='val_accuracy',
+                                                  verbose=1,
+                                                  save_weights_only=False,
+                                                  save_best_only=True,
+                                                  mode='max',
+                                                  save_freq='epoch')
 
-    x_train = [
-                split("train",d['ba']).reshape(-1,int(window_size),1),
-                split("train",d['u']),
-                split("train",d['K_seq'])
-            ]
-    y_train = [split("train",d['a']),split("train",d['K'])]
+    # Tensorboard 로그 설정
+    log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    tensorboard_callback = keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 
-    x_val = [
-                split("val",d['ba']).reshape(-1,int(window_size),1),
-                split("val",d['tire_stft']).reshape(-1,25,21,1),
-                split("val",d['K_seq'])
-            ]
-    y_val = [split("val",d['a']),split("val",d['K'])]
+    # 데이터 증강을 포함한 Generator 생성
+    train_datagen = keras.preprocessing.image.ImageDataGenerator(
+        rotation_range=40,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        fill_mode='nearest'
+    )
 
-    if not os.path.exists('./models/'+sys.argv[2] + '_'  +  data_type):
-        os.makedirs('./models/'+sys.argv[2] + '_'  +  data_type)
+    train_generator = train_datagen.flow(x_train,
+                                         y_train,
+                                         batch_size=32)
 
-    earlyStopping = EarlyStopping(monitor='val_loss', patience=21, verbose=0, mode='min')
-    checkpointer = ModelCheckpoint(monitor='val_loss', filepath='./models/'+sys.argv[2] + '_' + data_type+'/{epoch:02d}-{val_loss:.2f}.hdf5', verbose=1, save_best_only=True)
-    rl_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.05, patience=10, verbose=1, mode='auto', min_delta=0.0001, cooldown=0, min_lr=0)
-    csv_logger = CSVLogger('./models/'+sys.argv[2] + '_'  +  data_type+'/result.csv')
+    val_datagen = keras.preprocessing.image.ImageDataGenerator(
+        rotation_range=40,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        fill_mode='nearest'
+    )
 
-    model.fit(x_train, y_train,
-            batch_size=batch_size, epochs=10000,
-            validation_data=(x_val, y_val),
-            shuffle=True,
-            callbacks=[earlyStopping, checkpointer, rl_scheduler, csv_logger])
+    val_generator = val_datagen.flow(x_valid,
+                                     y_valid,
+                                     batch_size=32)
 
-if __name__=="__main__":
-    main(sys.argv[1])
+    # 모델 컴파일
+    model.compile(loss="categorical_crossentropy",
+                  optimizer=keras.optimizers.Adam(learning_rate=1e-5),
+                  metrics=['accuracy'])
+
+    # 모델 학습
+    model.fit(train_generator,
+              epochs=19,
+              validation_data=val_generator,
+              verbose=1,
+              callbacks=[checkpoint, tensorboard_callback, reduce, early_stop])
+
+    # 모델 평가
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    print('Test accuracy:', test_acc)
+
+if __name__ == "__main__":
+    main()
